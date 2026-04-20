@@ -1,0 +1,28 @@
+OUTPATIENT SERVICES CLAIM
+Provider: Riverside Clinic, 250 Main Street, Austin, TX 78701
+NPI: 1122334455
+
+VISIT INFORMATION
+Date of Service: 2024-03-22
+Visit Type: Office Visit - Established Patient
+Place of Service: Outpatient Clinic
+Same Day Procedure: Yes
+
+CLINICAL INFORMATION
+Chief Complaint: Follow-up for type 2 diabetes management
+Diagnosis: E11.9 - Type 2 diabetes without complications
+Procedure Codes:
+  CPT 99213 - Office visit, established patient, moderate complexity
+  CPT 83036 - Hemoglobin A1c test
+  CPT 93000 - Electrocardiogram, routine ECG
+
+CHARGES
+Office Visit Consultation: $185.00
+Diagnostic Test (A1c): $42.00
+ECG: $95.00
+Total Outpatient Charges: $322.00
+
+INSURANCE INFORMATION
+Claim Type: Outpatient Professional
+No Admission Required
+Authorization: Not Required for routine outpatient follow-up

@@ -1,0 +1,66 @@
+# ClaimScribe AI - Render.com Deployment Blueprint
+# Deploy with: push to GitHub, then New → Blueprint on Render
+databases: []
+
+services:
+  # ── Backend: FastAPI + OCR + MLflow file-store ──
+  - type: web
+    name: claimscribe-backend
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    plan: free
+    region: oregon
+    healthCheckPath: /api/v1/health/status
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+      - key: DEBUG
+        value: "false"
+      - key: LOG_LEVEL
+        value: INFO
+      - key: API_V1_PREFIX
+        value: /api/v1
+      - key: MAX_FILE_SIZE
+        value: "20000000"  # 20MB on free tier (memory-bound)
+      - key: MLFLOW_TRACKING_URI
+        value: file:///app/data/mlruns
+      - key: UPLOAD_DIR
+        value: /app/data/uploads
+      - key: DATABASE_URL
+        value: sqlite:////app/data/claimscribe.db
+      - key: SECRET_KEY
+        generateValue: true
+      - key: ENCRYPTION_KEY
+        generateValue: true
+      - key: GEMINI_API_KEY
+        sync: false  # User sets in dashboard
+      - key: ALLOWED_HOSTS
+        value: "*.onrender.com,localhost,127.0.0.1"
+      - key: CORS_ORIGINS
+        sync: false  # User sets to frontend URL after first deploy
+
+  # ── Frontend: React static site (CDN-backed, free forever) ──
+  - type: web
+    name: claimscribe-frontend
+    runtime: static
+    buildCommand: cd frontend && npm install && npm run build
+    staticPublishPath: ./frontend/dist
+    pullRequestPreviewsEnabled: false
+    headers:
+      - path: /*
+        name: X-Frame-Options
+        value: DENY
+      - path: /*
+        name: X-Content-Type-Options
+        value: nosniff
+      - path: /*
+        name: Referrer-Policy
+        value: strict-origin-when-cross-origin
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    envVars:
+      - key: VITE_API_URL
+        sync: false  # User sets to backend URL after first deploy

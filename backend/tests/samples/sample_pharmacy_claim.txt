@@ -1,0 +1,27 @@
+PHARMACY BENEFIT CLAIM
+Pharmacy: MediCare Pharmacy, 400 Oak Street, Springfield, IL 62701
+NPI: 1234567890
+
+PRESCRIPTION DETAILS
+NDC Code: 00093-0172-01
+Drug Name: Metformin HCl (Generic)
+Strength: 500 mg Tablet
+Quantity Dispensed: 60 tablets
+Days Supply: 30
+Refills Remaining: 2
+
+CLAIM INFORMATION
+Date Dispensed: 2024-03-15
+Prescriber: Primary Care Physician
+Rx Number: 7734892
+
+COST BREAKDOWN
+Ingredient Cost: $12.40
+Dispensing Fee: $2.50
+Patient Copay: $5.00
+Plan Paid: $9.90
+Total Claim: $14.90
+
+BENEFIT INFORMATION
+Formulary Tier: Tier 1 - Generic
+Prior Authorization: Not Required

@@ -1,0 +1,88 @@
+version: "3.8"
+
+services:
+  # ── MLflow Tracking Server ────────────────────────────────
+  mlflow:
+    image: python:3.11-slim
+    container_name: claimscribe-mlflow
+    ports:
+      - "5000:5000"
+    environment:
+      - MLFLOW_TRACKING_URI=http://0.0.0.0:5000
+      - MLFLOW_BACKEND_STORE_URI=sqlite:///mlflow/mlflow.db
+      - MLFLOW_DEFAULT_ARTIFACT_ROOT=/mlflow/artifacts
+    volumes:
+      - mlflow_data:/mlflow
+    command: >
+      bash -c "pip install mlflow==2.12.2 &&
+               mkdir -p /mlflow/artifacts &&
+               mlflow server 
+               --backend-store-uri sqlite:///mlflow/mlflow.db 
+               --default-artifact-root /mlflow/artifacts 
+               --host 0.0.0.0 
+               --port 5000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - claimscribe-network
+
+  # ── FastAPI Backend ───────────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: claimscribe-backend
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    ports:
+      - "8000:8000"
+    environment:
+      - ENVIRONMENT=production
+      - MLFLOW_TRACKING_URI=http://mlflow:5000
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - SECRET_KEY=${SECRET_KEY:-claimscribe-secret-key-change-in-production}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY:-}
+      - DATABASE_URL=sqlite:///./data/claimscribe.db
+      - UPLOAD_DIR=./data/uploads
+      - MAX_FILE_SIZE=50000000
+      - LOG_LEVEL=INFO
+      - CORS_ORIGINS=http://localhost:5173,http://frontend:5173
+    volumes:
+      - backend_data:/app/data
+    depends_on:
+      - mlflow
+    networks:
+      - claimscribe-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health/status"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ── React Frontend ────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: claimscribe-frontend
+    ports:
+      - "5173:5173"
+    environment:
+      - VITE_API_URL=http://localhost:8000
+      - VITE_MLFLOW_URL=http://localhost:5000
+    depends_on:
+      - backend
+    networks:
+      - claimscribe-network
+    restart: unless-stopped
+
+networks:
+  claimscribe-network:
+    driver: bridge
+
+volumes:
+  mlflow_data:
+  backend_data:
