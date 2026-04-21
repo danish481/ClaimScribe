@@ -13,6 +13,7 @@ from fastapi.responses import JSONResponse
 
 from app.config import settings
 from app.routers import documents, llm, health
+from app.routers import pipeline as pipeline_router
 
 # ── Application Factory ───────────────────────────────────
 
@@ -126,6 +127,10 @@ def create_app() -> FastAPI:
         health.router,
         prefix=settings.API_V1_PREFIX,
     )
+    app.include_router(
+        pipeline_router.router,
+        prefix=settings.API_V1_PREFIX,
+    )
 
     # Monitoring alias: /api/v1/monitoring/metrics -> same handler as /api/v1/health/metrics
     from fastapi import APIRouter as _APIRouter
@@ -177,6 +182,29 @@ async def startup_event():
     except Exception as e:
         print(f"MLflow initialization warning: {e}")
 
+    # Start pipeline scheduler
+    if settings.PIPELINE_ENABLED:
+        try:
+            from apscheduler.schedulers.background import BackgroundScheduler
+            from app.services.pipeline_service import pipeline_service
+
+            scheduler = BackgroundScheduler()
+            scheduler.add_job(
+                func=lambda: pipeline_service.run("schedule"),
+                trigger="interval",
+                minutes=settings.PIPELINE_SCHEDULE_MINUTES,
+                id="pipeline_batch",
+                replace_existing=True,
+            )
+            scheduler.start()
+            app.state.scheduler = scheduler
+            print(
+                f"Pipeline scheduler started — "
+                f"runs every {settings.PIPELINE_SCHEDULE_MINUTES} min"
+            )
+        except Exception as e:
+            print(f"Pipeline scheduler warning: {e}")
+
     # Log startup event
     from app.core.security import AuditLogger
     AuditLogger.log_event(
@@ -188,6 +216,10 @@ async def startup_event():
 @app.on_event("shutdown")
 async def shutdown_event():
     """Cleanup on shutdown."""
+    scheduler = getattr(app.state, "scheduler", None)
+    if scheduler and scheduler.running:
+        scheduler.shutdown(wait=False)
+
     from app.core.security import AuditLogger
     AuditLogger.log_event(event_type="system_shutdown", details={})
     print(f"\n{settings.APP_NAME} shutting down gracefully.\n")

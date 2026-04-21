@@ -8,7 +8,7 @@ interface Message {
   timestamp: Date
 }
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8001'
 
 const suggestedQueries = [
   'What type of claim is this document?',
@@ -19,7 +19,12 @@ const suggestedQueries = [
   'What is the claim processing workflow?',
 ]
 
-export default function LLMChat() {
+interface LLMChatProps {
+  initialDocumentId?: string | null
+  initialFilename?: string | null
+}
+
+export default function LLMChat({ initialDocumentId, initialFilename }: LLMChatProps) {
   const [messages, setMessages] = useState<Message[]>([
     {
       role: 'assistant',
@@ -30,16 +35,13 @@ export default function LLMChat() {
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const sentDocIdRef = useRef<string | null>(null)
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }
 
-  useEffect(() => {
-    scrollToBottom()
-  }, [messages])
-
-  const sendMessage = async (content: string) => {
+  const sendMessageWithDocId = async (content: string, docId: string | null) => {
     if (!content.trim()) return
 
     const userMessage: Message = {
@@ -53,13 +55,12 @@ export default function LLMChat() {
     setLoading(true)
 
     try {
+      const body: Record<string, unknown> = { query: content, include_sources: true }
+      if (docId) body.document_ids = [docId]
       const response = await fetch(`${API_URL}/api/v1/llm/query`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          query: content,
-          include_sources: true,
-        }),
+        body: JSON.stringify(body),
       })
 
       const data = await response.json()
@@ -98,9 +99,24 @@ export default function LLMChat() {
     return 'Thank you for your question about healthcare claims processing.\n\nI can assist with:\n- Document classification and analysis\n- Medical coding interpretation (ICD-10, CPT, HCPCS)\n- HIPAA compliance guidance\n- Claims workflow optimization\n- Billing and reimbursement questions\n\nCould you please share more details or upload a document you\'d like me to analyze?'
   }
 
+  useEffect(() => {
+    scrollToBottom()
+  }, [messages])
+
+  useEffect(() => {
+    if (initialDocumentId && initialDocumentId !== sentDocIdRef.current) {
+      sentDocIdRef.current = initialDocumentId
+      const label = initialFilename ? `"${initialFilename}"` : `document ID ${initialDocumentId}`
+      sendMessageWithDocId(
+        `Please analyze ${label}. Classify the claim type, highlight any PHI, and summarize the key findings.`,
+        initialDocumentId,
+      )
+    }
+  }, [initialDocumentId, initialFilename])
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    sendMessage(input)
+    sendMessageWithDocId(input, null)
   }
 
   return (
@@ -116,7 +132,7 @@ export default function LLMChat() {
               <h3 className="font-semibold text-slate-800">Healthcare AI Assistant</h3>
               <div className="flex items-center gap-1.5">
                 <span className="w-1.5 h-1.5 bg-medical-500 rounded-full animate-pulse" />
-                <span className="text-xs text-slate-400">Powered by Gemini 1.5 Flash</span>
+                <span className="text-xs text-slate-400">Powered by Gemini 2.5 Flash</span>
               </div>
             </div>
             <div className="ml-auto flex items-center gap-1.5 px-3 py-1 bg-medical-50 rounded-lg">
@@ -205,7 +221,7 @@ export default function LLMChat() {
                 {suggestedQueries.map((query) => (
                   <button
                     key={query}
-                    onClick={() => sendMessage(query)}
+                    onClick={() => sendMessageWithDocId(query, null)}
                     className="px-4 py-2 bg-white border border-slate-200 rounded-xl text-sm text-slate-600 hover:border-primary-300 hover:text-primary-700 transition-colors"
                   >
                     {query}

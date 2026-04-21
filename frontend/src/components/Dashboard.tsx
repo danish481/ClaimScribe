@@ -1,12 +1,13 @@
 import { useState, useEffect } from 'react'
 import {
-  FileText, Clock, Shield, Brain, Download, ChevronRight,
+  FileText, Shield, Brain, Download, ChevronRight,
   AlertTriangle, CheckCircle, Loader2
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 
 interface DashboardProps {
   refreshTrigger: number
+  onAnalyzeWithAI?: (docId: string, filename: string) => void
 }
 
 interface Document {
@@ -26,9 +27,10 @@ interface Document {
   processed_at?: string
 }
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8001'
+const MLFLOW_URL = import.meta.env.VITE_MLFLOW_URL || 'http://localhost:5001'
 
-export default function Dashboard({ refreshTrigger }: DashboardProps) {
+export default function Dashboard({ refreshTrigger, onAnalyzeWithAI }: DashboardProps) {
   const [documents, setDocuments] = useState<Document[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedDoc, setSelectedDoc] = useState<Document | null>(null)
@@ -94,6 +96,8 @@ export default function Dashboard({ refreshTrigger }: DashboardProps) {
     fetchDocuments()
   }, [refreshTrigger])
 
+  const REVIEW_THRESHOLD = 0.60
+
   const getTypeColor = (type: string) => {
     switch (type) {
       case 'inpatient': return 'bg-blue-50 text-blue-700 border-blue-200'
@@ -102,6 +106,14 @@ export default function Dashboard({ refreshTrigger }: DashboardProps) {
       default: return 'bg-slate-50 text-slate-700 border-slate-200'
     }
   }
+
+  const getConfidenceColor = (confidence: number) => {
+    if (confidence < REVIEW_THRESHOLD) return 'bg-red-500'
+    if (confidence < 0.80) return 'bg-amber-400'
+    return 'bg-medical-500'
+  }
+
+  const needsReview = (doc: Document) => doc.confidence < REVIEW_THRESHOLD
 
   const formatBytes = (bytes: number) => {
     if (bytes < 1024) return bytes + ' B'
@@ -162,13 +174,18 @@ export default function Dashboard({ refreshTrigger }: DashboardProps) {
                     p-4 flex items-center gap-4 cursor-pointer transition-colors
                     ${selectedDoc?.document_id === doc.document_id
                       ? 'bg-primary-50/50'
-                      : 'hover:bg-slate-50'
+                      : needsReview(doc)
+                        ? 'hover:bg-red-50/40 border-l-4 border-l-red-400'
+                        : 'hover:bg-slate-50'
                     }
                   `}
                 >
                   {/* File Icon */}
-                  <div className="w-10 h-10 bg-slate-100 rounded-xl flex items-center justify-center flex-shrink-0">
-                    <FileText className="w-5 h-5 text-slate-500" />
+                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${needsReview(doc) ? 'bg-red-50' : 'bg-slate-100'}`}>
+                    {needsReview(doc)
+                      ? <AlertTriangle className="w-5 h-5 text-red-400" />
+                      : <FileText className="w-5 h-5 text-slate-500" />
+                    }
                   </div>
 
                   {/* Info */}
@@ -177,6 +194,11 @@ export default function Dashboard({ refreshTrigger }: DashboardProps) {
                       <p className="font-medium text-slate-800 truncate">{doc.filename}</p>
                       {doc.phi_detected && (
                         <Shield className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />
+                      )}
+                      {needsReview(doc) && (
+                        <span className="flex-shrink-0 px-1.5 py-0.5 bg-red-100 text-red-600 border border-red-200 rounded text-xs font-semibold">
+                          Needs Review
+                        </span>
                       )}
                     </div>
                     <div className="flex items-center gap-3 mt-1">
@@ -193,7 +215,7 @@ export default function Dashboard({ refreshTrigger }: DashboardProps) {
 
                   {/* Confidence */}
                   <div className="text-right flex-shrink-0 w-16">
-                    <div className="text-sm font-semibold text-slate-700">
+                    <div className={`text-sm font-semibold ${needsReview(doc) ? 'text-red-500' : 'text-slate-700'}`}>
                       {(doc.confidence * 100).toFixed(0)}%
                     </div>
                     <div className="text-xs text-slate-400">confidence</div>
@@ -228,6 +250,19 @@ export default function Dashboard({ refreshTrigger }: DashboardProps) {
             >
               <h3 className="font-semibold text-slate-800 mb-4">Document Details</h3>
 
+              {needsReview(selectedDoc) && (
+                <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-xl flex gap-2">
+                  <AlertTriangle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <p className="text-xs font-semibold text-red-700">Low Confidence — Needs Review</p>
+                    <p className="text-xs text-red-500 mt-0.5">
+                      Classifier confidence {(selectedDoc.confidence * 100).toFixed(0)}% is below the 60% threshold.
+                      Drop this file in <span className="font-mono">data/inbox/</span> and run the pipeline to route it to the Review Queue.
+                    </p>
+                  </div>
+                </div>
+              )}
+
               <div className="space-y-4">
                 <div>
                   <p className="text-xs text-slate-400 uppercase tracking-wider mb-1">Type</p>
@@ -241,12 +276,17 @@ export default function Dashboard({ refreshTrigger }: DashboardProps) {
                   <div className="flex items-center gap-3">
                     <div className="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden">
                       <div
-                        className="h-full bg-primary-500 rounded-full"
+                        className={`h-full rounded-full transition-all ${getConfidenceColor(selectedDoc.confidence)}`}
                         style={{ width: `${selectedDoc.confidence * 100}%` }}
                       />
                     </div>
-                    <span className="text-sm font-semibold">{(selectedDoc.confidence * 100).toFixed(1)}%</span>
+                    <span className={`text-sm font-semibold ${needsReview(selectedDoc) ? 'text-red-500' : 'text-slate-700'}`}>
+                      {(selectedDoc.confidence * 100).toFixed(1)}%
+                    </span>
                   </div>
+                  {!needsReview(selectedDoc) && selectedDoc.confidence < 0.80 && (
+                    <p className="text-xs text-amber-500 mt-1">Moderate confidence — verify classification</p>
+                  )}
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
@@ -283,14 +323,19 @@ export default function Dashboard({ refreshTrigger }: DashboardProps) {
                 {selectedDoc.mlflow_run_id && (
                   <div>
                     <p className="text-xs text-slate-400 uppercase tracking-wider mb-1">MLflow Run</p>
-                    <a
-                      href={`http://localhost:5000/#/experiments/runs/${selectedDoc.mlflow_run_id}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-sm text-primary-600 hover:text-primary-700 font-mono"
-                    >
-                      {selectedDoc.mlflow_run_id.slice(0, 16)}...
-                    </a>
+                    <div className="flex items-center gap-2">
+                      <a
+                        href={MLFLOW_URL}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-sm text-primary-600 hover:text-primary-700 underline"
+                      >
+                        Open MLflow UI ↗
+                      </a>
+                    </div>
+                    <p className="text-xs font-mono text-slate-400 mt-1 break-all">
+                      Run ID: {selectedDoc.mlflow_run_id}
+                    </p>
                   </div>
                 )}
 
@@ -321,7 +366,10 @@ export default function Dashboard({ refreshTrigger }: DashboardProps) {
                   </div>
                 </div>
 
-                <button className="w-full btn-primary text-sm py-2.5">
+                <button
+                  className="w-full btn-primary text-sm py-2.5"
+                  onClick={() => onAnalyzeWithAI?.(selectedDoc.document_id, selectedDoc.filename)}
+                >
                   <Brain className="w-4 h-4 mr-2" />
                   Analyze with AI
                 </button>

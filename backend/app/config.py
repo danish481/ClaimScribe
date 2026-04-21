@@ -39,7 +39,7 @@ class Settings(BaseSettings):
 
     # ── API ───────────────────────────────────────────────
     API_V1_PREFIX: str = "/api/v1"
-    CORS_ORIGINS: str = "http://localhost:5173,http://localhost:3000"
+    CORS_ORIGINS: str = "http://localhost:5174,http://localhost:5173,http://localhost:8001"
     MAX_FILE_SIZE: int = 50 * 1024 * 1024  # 50MB
 
     # ── Database ──────────────────────────────────────────
@@ -56,7 +56,7 @@ class Settings(BaseSettings):
 
     # ── LLM (Gemini) ──────────────────────────────────────
     GEMINI_API_KEY: str = ""
-    GEMINI_MODEL: str = "gemini-1.5-flash"
+    GEMINI_MODEL: str = "gemini-2.5-flash"
     GEMINI_TEMPERATURE: float = 0.3
     GEMINI_MAX_TOKENS: int = 2048
 
@@ -70,6 +70,13 @@ class Settings(BaseSettings):
 
     # ── Export ────────────────────────────────────────────
     EXPORT_LINK_TTL_HOURS: int = 24
+
+    # ── Pipeline ──────────────────────────────────────────
+    PIPELINE_ENABLED: bool = True
+    PIPELINE_SCHEDULE_MINUTES: int = 30   # how often the scheduler fires
+    PIPELINE_STORAGE_BACKEND: str = "local"  # local | s3 | gcs
+    PIPELINE_S3_BUCKET: str = ""
+    PIPELINE_GCS_BUCKET: str = ""
 
     # ── HIPAA / Compliance ────────────────────────────────
     AUDIT_LOG_RETENTION_DAYS: int = 2555  # 7 years

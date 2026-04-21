@@ -5,7 +5,7 @@ import {
 } from 'lucide-react'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
-  ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line,
+  ResponsiveContainer, PieChart, Pie, Cell,
   AreaChart, Area,
 } from 'recharts'
 import { motion } from 'framer-motion'
@@ -20,8 +20,6 @@ const COLORS = {
   pharmacy: '#8b5cf6',
   unknown: '#94a3b8',
 }
-
-const PIE_COLORS = ['#3b82f6', '#10b981', '#8b5cf6']
 
 // Demo data
 const typeDistribution = [

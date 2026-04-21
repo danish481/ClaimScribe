@@ -5,7 +5,7 @@ interface HeaderProps {
   onTabChange: (tab: 'upload' | 'dashboard' | 'chat' | 'analytics') => void
 }
 
-export default function Header({ activeTab, onTabChange }: HeaderProps) {
+export default function Header({ activeTab: _activeTab, onTabChange: _onTabChange }: HeaderProps) {
   return (
     <header className="sticky top-0 z-50 bg-white/80 backdrop-blur-xl border-b border-slate-100">
       <div className="section-container">

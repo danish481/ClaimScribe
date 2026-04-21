@@ -1,31 +1,20 @@
 version: "3.8"
 
 services:
-  # ── MLflow Tracking Server ────────────────────────────────
+  # ── MLflow UI (reads from backend file store) ─────────────
   mlflow:
-    image: python:3.11-slim
+    image: ghcr.io/mlflow/mlflow:v2.12.2
     container_name: claimscribe-mlflow
     ports:
-      - "5000:5000"
-    environment:
-      - MLFLOW_TRACKING_URI=http://0.0.0.0:5000
-      - MLFLOW_BACKEND_STORE_URI=sqlite:///mlflow/mlflow.db
-      - MLFLOW_DEFAULT_ARTIFACT_ROOT=/mlflow/artifacts
+      - "5001:5000"
     volumes:
-      - mlflow_data:/mlflow
+      - ./data:/app/data
     command: >
-      bash -c "pip install mlflow==2.12.2 &&
-               mkdir -p /mlflow/artifacts &&
-               mlflow server 
-               --backend-store-uri sqlite:///mlflow/mlflow.db 
-               --default-artifact-root /mlflow/artifacts 
-               --host 0.0.0.0 
-               --port 5000"
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
+      mlflow server
+      --backend-store-uri file:///app/data/mlruns
+      --default-artifact-root /app/data/mlruns
+      --host 0.0.0.0
+      --port 5000
     networks:
       - claimscribe-network
 
@@ -37,20 +26,21 @@ services:
     container_name: claimscribe-backend
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
     ports:
-      - "8000:8000"
+      - "8001:8000"
     environment:
       - ENVIRONMENT=production
-      - MLFLOW_TRACKING_URI=http://mlflow:5000
+      - MLFLOW_TRACKING_URI=file:///app/data/mlruns
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - GEMINI_MODEL=gemini-2.5-flash
       - SECRET_KEY=${SECRET_KEY:-claimscribe-secret-key-change-in-production}
       - ENCRYPTION_KEY=${ENCRYPTION_KEY:-}
-      - DATABASE_URL=sqlite:///./data/claimscribe.db
+      - DATABASE_URL=sqlite:////app/data/claimscribe.db
       - UPLOAD_DIR=./data/uploads
       - MAX_FILE_SIZE=50000000
       - LOG_LEVEL=INFO
-      - CORS_ORIGINS=http://localhost:5173,http://frontend:5173
+      - CORS_ORIGINS=http://localhost:5174,http://localhost:5173,http://localhost:8001,http://frontend:5173
     volumes:
-      - backend_data:/app/data
+      - ./data:/app/data
     depends_on:
       - mlflow
     networks:
@@ -67,12 +57,14 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      args:
+        - VITE_API_URL=http://localhost:8001
     container_name: claimscribe-frontend
     ports:
-      - "5173:5173"
+      - "5174:5173"
     environment:
-      - VITE_API_URL=http://localhost:8000
-      - VITE_MLFLOW_URL=http://localhost:5000
+      - VITE_API_URL=http://localhost:8001
+      - VITE_MLFLOW_URL=http://localhost:5001
     depends_on:
       - backend
     networks:
@@ -83,6 +75,4 @@ networks:
   claimscribe-network:
     driver: bridge
 
-volumes:
-  mlflow_data:
-  backend_data:
+# data/ is now a bind-mount to ./data on the host — no named volumes needed

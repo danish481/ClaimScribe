@@ -117,20 +117,25 @@ class HealthcareLLMService:
             return
 
         if settings.GEMINI_API_KEY:
-            genai.configure(api_key=settings.GEMINI_API_KEY)
-            self.model = genai.GenerativeModel(
-                model_name=settings.GEMINI_MODEL,
-                generation_config={
-                    "temperature": settings.GEMINI_TEMPERATURE,
-                    "max_output_tokens": settings.GEMINI_MAX_TOKENS,
-                    "top_p": 0.95,
-                    "top_k": 40,
-                },
-                system_instruction=HEALTHCARE_SYSTEM_PROMPT,
-            )
-            self._initialized = True
+            try:
+                genai.configure(api_key=settings.GEMINI_API_KEY)
+                self.model = genai.GenerativeModel(
+                    model_name=settings.GEMINI_MODEL,
+                    generation_config={
+                        "temperature": settings.GEMINI_TEMPERATURE,
+                        "max_output_tokens": settings.GEMINI_MAX_TOKENS,
+                        "top_p": 0.95,
+                        "top_k": 40,
+                    },
+                    system_instruction=HEALTHCARE_SYSTEM_PROMPT,
+                )
+                print(f"LLM service initialised — model: {settings.GEMINI_MODEL}")
+            except Exception as e:
+                print(f"WARNING: Gemini init failed ({e}). Falling back to demo mode.")
+                self.model = None
         else:
-            print("WARNING: GEMINI_API_KEY not set. LLM queries will return mock responses.")
+            print("INFO: GEMINI_API_KEY not set — AI Assistant running in demo mode (built-in responses).")
+        self._initialized = True  # always mark done so warning only prints once
 
     def query(
         self,
@@ -268,11 +273,15 @@ class HealthcareLLMService:
         return sources
 
     def _generate_mock_response(self, query: str, context: str) -> str:
-        """Generate a mock response when LLM API is unavailable."""
+        """Generate a built-in response when no Gemini API key is configured."""
+        demo_notice = (
+            "> **Demo Mode** — Add a `GEMINI_API_KEY` to `.env` for full AI responses "
+            "([get a free key](https://aistudio.google.com/app/apikey)).\n\n"
+        )
         query_lower = query.lower()
 
         if any(w in query_lower for w in ["classify", "type", "category"]):
-            return (
+            return demo_notice + (
                 "Based on the document content provided, I can help classify this claim. "
                 "The document appears to be an **inpatient claim** based on references to "
                 "hospital admission, room and board charges, and discharge summary.\n\n"
@@ -284,7 +293,7 @@ class HealthcareLLMService:
                 "The confidence level for this classification is approximately **92%**."
             )
         elif any(w in query_lower for w in ["cost", "amount", "charge", "payment", "fee"]):
-            return (
+            return demo_notice + (
                 "I've analyzed the financial details in the document. Here are the key findings:\n\n"
                 "- **Total Billed Amount**: Based on the line items\n"
                 "- **Covered Amount**: Per insurance contract rates\n"
@@ -294,7 +303,7 @@ class HealthcareLLMService:
                 "patient's benefit plan details for precise calculation."
             )
         elif any(w in query_lower for w in ["code", "icd", "cpt", "hcpcs", "diagnosis"]):
-            return (
+            return demo_notice + (
                 "The document contains standard medical coding used in healthcare billing:\n\n"
                 "- **ICD-10 Codes**: Used for diagnosis classification\n"
                 "- **CPT Codes**: Describe procedures and services\n"
@@ -303,7 +312,7 @@ class HealthcareLLMService:
                 "Proper coding ensures accurate payment and compliance with payer requirements."
             )
         elif any(w in query_lower for w in ["hipaa", "compliance", "privacy", "phi"]):
-            return (
+            return demo_notice + (
                 "HIPAA compliance in claims processing involves several critical safeguards:\n\n"
                 "1. **Administrative Safeguards**: Access controls, audit logs, workforce training\n"
                 "2. **Physical Safeguards**: Secure workstations, controlled facility access\n"
@@ -314,7 +323,7 @@ class HealthcareLLMService:
                 "encryption at rest/transit, and comprehensive audit logging."
             )
         else:
-            return (
+            return demo_notice + (
                 "Thank you for your question about healthcare claims processing.\n\n"
                 "Based on the document(s) you've uploaded and my domain expertise in health "
                 "insurance claims, I can provide analysis on:\n\n"

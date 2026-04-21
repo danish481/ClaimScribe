@@ -23,7 +23,7 @@ interface UploadResult {
   phi_detected?: boolean
 }
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8001'
 
 export default function UploadSection({ onDocumentProcessed }: UploadSectionProps) {
   const [activeMode, setActiveMode] = useState<'file' | 'camera'>('file')
@@ -39,7 +39,7 @@ export default function UploadSection({ onDocumentProcessed }: UploadSectionProp
     await processFile(acceptedFiles[0])
   }, [])
 
-  const { getRootProps, getInputProps, isDragActive, acceptedFiles } = useDropzone({
+  const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
     accept: {
       'application/pdf': ['.pdf'],
@@ -97,7 +97,6 @@ export default function UploadSection({ onDocumentProcessed }: UploadSectionProp
   const clearResult = () => {
     setResult(null)
     setError(null)
-    acceptedFiles.length = 0
   }
 
   const getTypeColor = (type?: string) => {

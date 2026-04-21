@@ -50,8 +50,17 @@ CLAIM_KEYWORDS = {
         "bed day": 2.5,
         "inpatient facility": 4.0,
         "acute care": 2.5,
-        "snf": 2.0,  # Skilled nursing facility
+        "snf": 2.0,
         "rehabilitation facility": 2.0,
+        # Hospital medication management scenarios
+        "inpatient pharmacy": 4.0,
+        "inpatient medication": 4.0,
+        "medication management": 3.0,
+        "admission": 3.0,       # catches "Admission:" without "hospital"
+        "discharge": 2.0,       # catches "Discharge:" without "summary"
+        "bed days": 2.5,
+        "hospital stay": 4.0,
+        "medical center": 2.0,
     },
     DocumentType.OUTPATIENT: {
         # High-weight keywords
@@ -145,9 +154,13 @@ class DocumentClassifier:
     def _init_mlflow(self):
         """Initialize MLflow tracking."""
         if not self._mlflow_initialized:
-            mlflow.set_tracking_uri(settings.MLFLOW_TRACKING_URI)
-            mlflow.set_experiment(settings.MLFLOW_EXPERIMENT_NAME)
-            self._mlflow_initialized = True
+            try:
+                mlflow.set_tracking_uri(settings.MLFLOW_TRACKING_URI)
+                mlflow.set_experiment(settings.MLFLOW_EXPERIMENT_NAME)
+            except Exception as e:
+                print(f"MLflow classifier init warning: {e}")
+            finally:
+                self._mlflow_initialized = True  # don't retry on every call
 
     def classify(self, text: str, document_id: Optional[str] = None) -> Dict:
         """
@@ -166,16 +179,21 @@ class DocumentClassifier:
         # Preprocess text
         processed_text = self._preprocess_text(text)
 
-        # Calculate scores for each category
-        scores = self._calculate_scores(processed_text)
+        # Step 1: raw keyword scores (before any normalization)
+        raw_scores = self._calculate_raw_scores(processed_text)
 
-        # Determine predicted type
+        # Step 2: check ambiguity on RAW scores — softmax would destroy this signal
+        is_ambiguous = self._check_ambiguity_raw(raw_scores)
+
+        # Step 3: normalize for probability display
+        scores = self._normalize_scores(raw_scores)
+
+        # Step 4: determine winner
         predicted_type, confidence = self._determine_type(scores, processed_text)
 
-        # Check for ambiguity
-        is_ambiguous = self._check_ambiguity(scores, processed_text)
+        # Step 5: penalise confidence when ambiguous
         if is_ambiguous:
-            confidence *= 0.7  # Reduce confidence for ambiguous cases
+            confidence *= 0.65
 
         # Log to MLflow
         processing_time = (time.time() - start_time) * 1000
@@ -221,33 +239,35 @@ class DocumentClassifier:
         text = re.sub(r'[^\w\s/\-().,:;]', ' ', text)
         return text.strip()
 
-    def _calculate_scores(self, text: str) -> Dict[DocumentType, float]:
-        """Calculate weighted keyword scores for each document type."""
+    def _calculate_raw_scores(self, text: str) -> Dict[DocumentType, float]:
+        """Raw weighted keyword scores — no normalization applied."""
         scores = {doc_type: 0.0 for doc_type in DocumentType if doc_type != DocumentType.UNKNOWN}
-
         for doc_type, keywords in self.keywords.items():
             for keyword, weight in keywords.items():
-                # Count occurrences
                 count = text.count(keyword)
                 if count > 0:
-                    # Apply weight with diminishing returns for repeated keywords
-                    score_contribution = weight * min(count, 3)  # Cap at 3 occurrences
-                    scores[doc_type] += score_contribution
+                    scores[doc_type] += weight * min(count, 3)
+        return scores
 
-        # Normalize scores to 0-1 range using softmax-like normalization
-        return self._normalize_scores(scores)
-
-    def _normalize_scores(self, scores: Dict[DocumentType, float]) -> Dict[DocumentType, float]:
-        """Normalize scores so they sum to 1 (probability-like)."""
-        total = sum(scores.values())
+    def _normalize_scores(self, raw: Dict[DocumentType, float]) -> Dict[DocumentType, float]:
+        """Linear normalization so scores sum to 1 (honest percentages, no softmax distortion)."""
+        total = sum(raw.values())
         if total == 0:
-            return {k: 0.0 for k in scores}
+            return {k: 0.0 for k in raw}
+        return {k: v / total for k, v in raw.items()}
 
-        # Softmax normalization
-        import math
-        exp_scores = {k: math.exp(v) for k, v in scores.items()}
-        total_exp = sum(exp_scores.values())
-        return {k: v / total_exp for k, v in exp_scores.items()}
+    def _check_ambiguity_raw(self, raw_scores: Dict[DocumentType, float]) -> bool:
+        """
+        Ambiguity check on RAW scores (before normalization).
+        If the second-highest raw score is ≥ 25% of the top score, the document
+        has meaningful signals for two categories and needs human review.
+        """
+        valid = {k: v for k, v in raw_scores.items() if k != DocumentType.UNKNOWN}
+        sorted_scores = sorted(valid.values(), reverse=True)
+        if len(sorted_scores) < 2 or sorted_scores[0] == 0:
+            return False
+        # second / top >= 0.25 → ambiguous
+        return (sorted_scores[1] / sorted_scores[0]) >= 0.25
 
     def _determine_type(
         self,
@@ -288,21 +308,6 @@ class DocumentClassifier:
 
         return DocumentType.UNKNOWN, 0.0
 
-    def _check_ambiguity(self, scores: Dict[DocumentType, float], text: str) -> bool:
-        """Check if document is ambiguous (multiple high scores)."""
-        sorted_scores = sorted(scores.items(), key=lambda x: x[1], reverse=True)
-
-        if len(sorted_scores) < 2:
-            return False
-
-        top_score = sorted_scores[0][1]
-        second_score = sorted_scores[1][1]
-
-        # If top two scores are close (within 20%), consider ambiguous
-        if second_score > 0 and (top_score - second_score) / second_score < 0.2:
-            return True
-
-        return False
 
     def _log_classification(
         self,
@@ -331,10 +336,17 @@ class DocumentClassifier:
                     mlflow.log_metric(f"score_{doc_type.value}", score)
 
                 # Log text sample as artifact
-                sample_path = f"/tmp/sample_{run.info.run_id}.txt"
-                with open(sample_path, 'w') as f:
-                    f.write(text[:2000])
-                mlflow.log_artifact(sample_path, "text_samples")
+                import tempfile, os
+                tmp_fd, sample_path = tempfile.mkstemp(suffix=".txt", prefix="claimscribe_")
+                try:
+                    with os.fdopen(tmp_fd, 'w') as f:
+                        f.write(text[:2000])
+                    mlflow.log_artifact(sample_path, "text_samples")
+                finally:
+                    try:
+                        os.unlink(sample_path)
+                    except OSError:
+                        pass
 
                 return run.info.run_id
 

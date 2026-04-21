@@ -3,6 +3,7 @@ ClaimScribe AI - MLflow Tracking Service
 Comprehensive experiment tracking, model versioning, and metrics monitoring
 """
 
+import os
 import time
 import json
 import tempfile
@@ -36,9 +37,13 @@ class MLflowTracker:
     def init(self):
         """Initialize MLflow connection."""
         if not self._initialized:
-            mlflow.set_tracking_uri(self.tracking_uri)
-            mlflow.set_experiment(self.experiment_name)
-            self._initialized = True
+            try:
+                mlflow.set_tracking_uri(self.tracking_uri)
+                mlflow.set_experiment(self.experiment_name)
+            except Exception as e:
+                print(f"MLflow init warning: {e}")
+            finally:
+                self._initialized = True  # don't retry on every call
 
     def log_classification(
         self,
@@ -68,9 +73,16 @@ class MLflowTracker:
                 mlflow.log_metric(f"score_{doc_type}", score)
 
             # Artifact: text sample
-            with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False) as f:
-                f.write(text_sample[:5000])
-                mlflow.log_artifact(f.name, "text_samples")
+            tmp_fd, tmp_path = tempfile.mkstemp(suffix=".txt", prefix="claimscribe_")
+            try:
+                with os.fdopen(tmp_fd, 'w') as f:
+                    f.write(text_sample[:5000])
+                mlflow.log_artifact(tmp_path, "text_samples")
+            finally:
+                try:
+                    os.unlink(tmp_path)
+                except OSError:
+                    pass
 
             return run.info.run_id
 
@@ -100,10 +112,16 @@ class MLflowTracker:
 
             # Log test data sample if provided
             if test_data is not None:
-                with tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False) as f:
-                    sample = test_data.head(100)
-                    sample.to_csv(f.name, index=False)
-                    mlflow.log_artifact(f.name, "test_data_sample")
+                tmp_fd2, tmp_csv = tempfile.mkstemp(suffix=".csv", prefix="claimscribe_")
+                try:
+                    with os.fdopen(tmp_fd2, 'w') as f:
+                        test_data.head(100).to_csv(f, index=False)
+                    mlflow.log_artifact(tmp_csv, "test_data_sample")
+                finally:
+                    try:
+                        os.unlink(tmp_csv)
+                    except OSError:
+                        pass
 
             return run.info.run_id
 

@@ -5,15 +5,24 @@ import UploadSection from './components/UploadSection'
 import Dashboard from './components/Dashboard'
 import LLMChat from './components/LLMChat'
 import AnalyticsPanel from './components/AnalyticsPanel'
+import PipelinePanel from './components/PipelinePanel'
 import Footer from './components/Footer'
 
 function App() {
-  const [activeTab, setActiveTab] = useState<'upload' | 'dashboard' | 'chat' | 'analytics'>('upload')
+  const [activeTab, setActiveTab] = useState<'upload' | 'dashboard' | 'chat' | 'analytics' | 'pipeline'>('upload')
   const [refreshTrigger, setRefreshTrigger] = useState(0)
+  const [analyzeDocId, setAnalyzeDocId] = useState<string | null>(null)
+  const [analyzeFilename, setAnalyzeFilename] = useState<string | null>(null)
 
   const handleDocumentProcessed = () => {
     setRefreshTrigger(prev => prev + 1)
     setActiveTab('dashboard')
+  }
+
+  const handleAnalyzeWithAI = (docId: string, filename: string) => {
+    setAnalyzeDocId(docId)
+    setAnalyzeFilename(filename)
+    setActiveTab('chat')
   }
 
   return (
@@ -34,6 +43,7 @@ function App() {
               { id: 'dashboard' as const, label: 'Documents', icon: 'FileText' },
               { id: 'chat' as const, label: 'AI Assistant', icon: 'MessageSquare' },
               { id: 'analytics' as const, label: 'Analytics', icon: 'BarChart3' },
+              { id: 'pipeline' as const, label: 'Pipeline', icon: 'Workflow' },
             ].map((tab) => (
               <button
                 key={tab.id}
@@ -58,13 +68,16 @@ function App() {
             <UploadSection onDocumentProcessed={handleDocumentProcessed} />
           )}
           {activeTab === 'dashboard' && (
-            <Dashboard refreshTrigger={refreshTrigger} />
+            <Dashboard refreshTrigger={refreshTrigger} onAnalyzeWithAI={handleAnalyzeWithAI} />
           )}
           {activeTab === 'chat' && (
-            <LLMChat />
+            <LLMChat initialDocumentId={analyzeDocId} initialFilename={analyzeFilename} />
           )}
           {activeTab === 'analytics' && (
             <AnalyticsPanel refreshTrigger={refreshTrigger} />
+          )}
+          {activeTab === 'pipeline' && (
+            <PipelinePanel />
           )}
         </div>
       </main>
