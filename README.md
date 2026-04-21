@@ -109,7 +109,7 @@ brew install --cask docker          # or download from docker.com
 open -a Docker                      # start Docker Desktop, wait for whale icon
 
 # 2. Clone
-git clone <repository-url>
+git clone https://github.com/danish481/ClaimScribe.git
 cd claimscribe-ai
 
 # 3. Configure environment
@@ -131,7 +131,7 @@ cp ~/Downloads/my_claim.pdf data/inbox/
 #    After install: open Docker Desktop from Start Menu, wait for status "Engine running"
 
 # 2. Clone (Git Bash or PowerShell)
-git clone <repository-url>
+git clone https://github.com/danish481/ClaimScribe.git
 cd claimscribe-ai
 
 # 3. Configure environment
@@ -158,7 +158,7 @@ sudo usermod -aG docker $USER       # allow running docker without sudo
 newgrp docker                       # apply group change without logout
 
 # 2. Clone
-git clone <repository-url>
+git clone https://github.com/danish481/ClaimScribe.git
 cd claimscribe-ai
 
 # 3. Configure environment
